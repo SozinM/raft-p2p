@@ -251,7 +251,7 @@ impl ConnectionHandler for Handler {
                     tracing::trace!("answered inbound ping from peer");
 
                     // A ping from a remote peer has been answered, wait for the next.
-                    self.inbound = Some(protocol::recv_ping(stream).boxed());
+                    self.inbound = Some(protocol::send_height(stream).boxed());
                 }
             }
         }
@@ -338,7 +338,7 @@ impl ConnectionHandler for Handler {
                 ..
             }) => {
                 stream.ignore_for_keep_alive();
-                self.inbound = Some(protocol::recv_ping(stream).boxed());
+                self.inbound = Some(protocol::send_height(stream).boxed());
             }
             ConnectionEvent::FullyNegotiatedOutbound(FullyNegotiatedOutbound {
                 protocol: mut stream,
@@ -370,9 +370,9 @@ enum OutboundState {
     Ping(PingFuture),
 }
 
-/// A wrapper around [`protocol::send_ping`] that enforces a time out.
+/// A wrapper around [`protocol::get_height`] that enforces a time out.
 async fn send_ping(stream: Stream, timeout: Duration) -> Result<(Stream, Duration), Failure> {
-    let ping = protocol::send_ping(stream);
+    let ping = protocol::get_height(stream);
     futures::pin_mut!(ping);
 
     match future::select(ping, Delay::new(timeout)).await {

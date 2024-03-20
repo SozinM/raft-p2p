@@ -18,7 +18,7 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-//! This module implements the `/ipfs/ping/1.0.0` protocol.
+//! This module implements the `/ipfs/skar/1.0.0` protocol.
 //!
 //! The ping protocol can be used as a simple application-layer health check
 //! for connections of any [`Transport`] as well as to measure and record

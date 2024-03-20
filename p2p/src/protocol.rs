@@ -21,10 +21,10 @@
 use futures::prelude::*;
 use instant::Instant;
 use libp2p_swarm::StreamProtocol;
-use rand::{distributions, prelude::*};
+use rand::prelude::*;
 use std::{io, time::Duration};
 
-pub const PROTOCOL_NAME: StreamProtocol = StreamProtocol::new("/ipfs/ping/1.0.0");
+pub const PROTOCOL_NAME: StreamProtocol = StreamProtocol::new("/ipfs/skar/1.0.0");
 
 /// The `Ping` protocol upgrade.
 ///
@@ -45,21 +45,20 @@ pub const PROTOCOL_NAME: StreamProtocol = StreamProtocol::new("/ipfs/ping/1.0.0"
 /// >           which can affect latencies especially on otherwise low-volume
 /// >           connections.
 #[derive(Default, Debug, Copy, Clone)]
-pub(crate) struct Ping;
+pub(crate) struct Skar;
 const PING_SIZE: usize = 32;
 
 /// Sends a ping and waits for the pong.
-pub(crate) async fn send_ping<S>(mut stream: S) -> io::Result<(S, Duration)>
+pub(crate) async fn get_height<S>(mut stream: S) -> io::Result<(S, Duration)>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
-    let payload: [u8; PING_SIZE] = thread_rng().sample(distributions::Standard);
-    stream.write_all(&payload).await?;
-    stream.flush().await?;
     let started = Instant::now();
     let mut recv_payload = [0u8; PING_SIZE];
     stream.read_exact(&mut recv_payload).await?;
-    if recv_payload == payload {
+    let height = String::from_utf8(recv_payload.to_vec());
+    if let Ok(height) = height {
+        println!("Height is {}", height);
         Ok((stream, started.elapsed()))
     } else {
         Err(io::Error::new(
@@ -70,12 +69,11 @@ where
 }
 
 /// Waits for a ping and sends a pong.
-pub(crate) async fn recv_ping<S>(mut stream: S) -> io::Result<S>
+pub(crate) async fn send_height<S>(mut stream: S) -> io::Result<S>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
-    let mut payload = [0u8; PING_SIZE];
-    stream.read_exact(&mut payload).await?;
+    let payload = "1000".as_bytes();
     stream.write_all(&payload).await?;
     stream.flush().await?;
     Ok(stream)
@@ -108,7 +106,7 @@ mod tests {
             let transport_event = transport.next().await.unwrap();
             let (listener_upgrade, _) = transport_event.into_incoming().unwrap();
             let conn = listener_upgrade.await.unwrap();
-            recv_ping(conn).await.unwrap();
+            send_height(conn).await.unwrap();
         });
 
         async_std::task::block_on(async move {
@@ -117,7 +115,7 @@ mod tests {
                 .unwrap()
                 .await
                 .unwrap();
-            let (_, rtt) = send_ping(c).await.unwrap();
+            let (_, rtt) = get_height(c).await.unwrap();
             assert!(rtt > Duration::from_secs(0));
         });
     }
