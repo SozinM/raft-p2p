@@ -138,15 +138,13 @@ impl Client {
     }
 
     /// Request the content of the given file from the given peer.
-    pub(crate) async fn request_file(
+    pub(crate) async fn get_height(
         &mut self,
         peer: PeerId,
-        file_name: String,
     ) -> Result<Vec<u8>, Box<dyn Error + Send>> {
         let (sender, receiver) = oneshot::channel();
         self.sender
-            .send(Command::RequestFile {
-                file_name,
+            .send(Command::GetHeight {
                 peer,
                 sender,
             })
@@ -156,13 +154,13 @@ impl Client {
     }
 
     /// Respond with the provided file content to the given request.
-    pub(crate) async fn respond_file(
+    pub(crate) async fn send_height(
         &mut self,
         file: Vec<u8>,
-        channel: ResponseChannel<FileResponse>,
+        channel: ResponseChannel<HeightResponse>,
     ) {
         self.sender
-            .send(Command::RespondFile { file, channel })
+            .send(Command::RespondHeight { file, channel })
             .await
             .expect("Command receiver not to be dropped.");
     }
@@ -261,11 +259,10 @@ impl EventLoop {
                                       request_response::Event::Message { message, .. },
                                   )) => match message {
                 request_response::Message::Request {
-                    request, channel, ..
+                    request: _ , channel, ..
                 } => {
                     self.event_sender
                         .send(Event::InboundRequest {
-                            request: request.0,
                             channel,
                         })
                         .await
@@ -377,8 +374,7 @@ impl EventLoop {
                     .get_providers(file_name.into_bytes().into());
                 self.pending_get_providers.insert(query_id, sender);
             }
-            Command::RequestFile {
-                file_name,
+            Command::GetHeight {
                 peer,
                 sender,
             } => {
@@ -386,14 +382,14 @@ impl EventLoop {
                     .swarm
                     .behaviour_mut()
                     .request_response
-                    .send_request(&peer, FileRequest(file_name));
+                    .send_request(&peer, HeightRequest);
                 self.pending_request_file.insert(request_id, sender);
             }
-            Command::RespondFile { file, channel } => {
+            Command::RespondHeight { file, channel } => {
                 self.swarm
                     .behaviour_mut()
                     .request_response
-                    .send_response(channel, FileResponse(file))
+                    .send_response(channel, HeightResponse(file))
                     .expect("Connection to peer to be still open.");
             }
         }
@@ -402,7 +398,7 @@ impl EventLoop {
 
 #[derive(NetworkBehaviour)]
 struct Behaviour {
-    request_response: request_response::cbor::Behaviour<FileRequest, FileResponse>,
+    request_response: request_response::cbor::Behaviour<HeightRequest, HeightResponse>,
     kademlia: kad::Behaviour<kad::store::MemoryStore>,
 }
 
@@ -425,27 +421,25 @@ enum Command {
         file_name: String,
         sender: oneshot::Sender<HashSet<PeerId>>,
     },
-    RequestFile {
-        file_name: String,
+    GetHeight {
         peer: PeerId,
         sender: oneshot::Sender<Result<Vec<u8>, Box<dyn Error + Send>>>,
     },
-    RespondFile {
+    RespondHeight {
         file: Vec<u8>,
-        channel: ResponseChannel<FileResponse>,
+        channel: ResponseChannel<HeightResponse>,
     },
 }
 
 #[derive(Debug)]
 pub(crate) enum Event {
     InboundRequest {
-        request: String,
-        channel: ResponseChannel<FileResponse>,
+        channel: ResponseChannel<HeightResponse>,
     },
 }
 
 // Simple file exchange protocol
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct FileRequest(String);
+struct HeightRequest;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct FileResponse(Vec<u8>);
+pub(crate) struct HeightResponse(Vec<u8>);

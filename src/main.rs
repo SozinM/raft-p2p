@@ -29,8 +29,9 @@ use futures::prelude::*;
 use futures::StreamExt;
 use libp2p::{core::Multiaddr, multiaddr::Protocol};
 use std::error::Error;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::PathBuf;
+use libp2p::bytes::Buf;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -73,19 +74,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     match opt.argument {
         // Providing a file.
-        CliArgument::Provide { path, name } => {
+        CliArgument::Provide { path: _, name } => {
             // Advertise oneself as a provider of the file on the DHT.
             network_client.start_providing(name.clone()).await;
 
             loop {
                 match network_events.next().await {
                     // Reply with the content of the file on incoming requests.
-                    Some(network::Event::InboundRequest { request, channel }) => {
-                        if request == name {
-                            network_client
-                                .respond_file(std::fs::read(&path)?, channel)
-                                .await;
-                        }
+                    Some(network::Event::InboundRequest { channel }) => {
+                        network_client
+                            .send_height(1000usize.to_ne_bytes().to_vec(), channel)
+                            .await;
                     }
                     e => todo!("{:?}", e),
                 }
@@ -102,8 +101,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             // Request the content of the file from each node.
             let requests = providers.into_iter().map(|p| {
                 let mut network_client = network_client.clone();
-                let name = name.clone();
-                async move { network_client.request_file(p, name).await }.boxed()
+                async move { network_client.get_height(p).await }.boxed()
             });
 
             // Await the requests, ignore the remaining once a single one succeeds.
@@ -111,8 +109,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .await
                 .map_err(|_| "None of the providers returned file.")?
                 .0;
-
-            std::io::stdout().write_all(&file_content)?;
+            let number = usize::from_ne_bytes(file_content.try_into().unwrap());
+            println!("{}", number);
         }
     }
 
